@@ -13,7 +13,7 @@
 
 // ------------------------- WiFi & NTP Configuration -------------------------
 const char* ssid = "BrockNet";
-const char* password = "****";
+const char* password = "*****";
 
 // Set your UTC offset in seconds (e.g., for GMT+1 use 3600)
 uint16_t utcOffsetInSeconds = 36000;
@@ -177,7 +177,7 @@ void transmitFanCode(const char* code) {
 }
 
 float getAveragedTemperature(bool reinitialize = false){
-  static const int numSamples = 10;
+  static const int numSamples = 30;
   static float tempSamples[numSamples] = {0};
   static int sampleIndex = 0;
   static bool flag = false;
@@ -362,9 +362,10 @@ void handleCommands(String input) {
     }
 
     // Process commands:
-    if (command.equalsIgnoreCase("help")) {
+    if (command.equalsIgnoreCase("help") || command.equals("?")) {
       Serial.println("Available commands:");
       Serial.println("  setssid <SSID>         - Set WiFi SSID");
+      Serial.println("  help or ?              - Shows this menu");
       Serial.println("  setpass <PASSWORD>     - Set WiFi password");
       Serial.println("  sftempon <temp>        - Set fan ON temperature threshold");
       Serial.println("  sftempoff <temp>       - Set fan OFF temperature threshold");
@@ -515,7 +516,7 @@ void handleCommands(String input) {
       
     }
     else {
-      Serial.println("Unknown command. Type 'help' for a list of commands.");
+      Serial.println("Unknown command. Type 'help' or '?' for a list of commands.");
     }
     
 }
@@ -532,15 +533,27 @@ void processSerialCommands() {
 
 void serialWebPage(){
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      if(!request->authenticate("admin", "****")){
-        IPAddress clientIP = request->client()->remoteIP();
-        Serial.println("WARNING: Bad login attempt made from IP: " + clientIP.toString() + " either evil hacker or someone put in wrong credentials :P");
+      if(!request->authenticate("admin", "*******")){
+        //IPAddress clientIP = request->client()->remoteIP();
+        //Serial.println("WARNING: Bad login attempt made from IP: " + clientIP.toString() + " either evil hacker or someone put in wrong credentials :P");
         return request->requestAuthentication();
       }
     request->send_P(200, "text/html", INDEX_HTML);
   });
     server.on("/logout", HTTP_GET, [](AsyncWebServerRequest *request){
       request->send(401, "text/plain", "Logged out. Goodbye and have a blessing day");
+    });
+    server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request){
+      digitalWrite(TRANSMIT_STATUS, HIGH);
+      float avgTemp = getAveragedTemperature();
+      if(avgTemp == DEVICE_DISCONNECTED_C){
+        request->send(500, "text/plain", "Error: Temperature sensor not connected");
+      } else {
+        char tempStr[16];
+        snprintf(tempStr, sizeof(tempStr), "%.2f", avgTemp);
+        request->send(200, "text/plain", tempStr);
+      }
+      digitalWrite(TRANSMIT_STATUS, LOW);
     });
   
   // server.on("/log", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -661,7 +674,7 @@ void setup() {
   serialWebPage();
   getFlashSpecs();
   Serial.println("Fan controller firmware version 1.5 5:38PM 4/2/25");
-  Serial.println("Type 'help' for a list of commands.");
+  Serial.println("Type 'help' or '?' for a list of commands.");
 }
 
 
