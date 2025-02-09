@@ -15,10 +15,9 @@
 const char* ssid = "BrockNet";
 const char* password = "*****";
 
-// Set your UTC offset in seconds (e.g., for GMT+1 use 3600)
-uint16_t utcOffsetInSeconds = 36000;
+uint16_t utcOffsetInSeconds = 36000; 
 uint32_t ntpUpdateMs = 43200000; //Every 12 hours
-const float versionNumber = 1.9;
+// const float versionNumber = 1.9; //
 
 // IPAddress local_IP(192, 168, 1, 159);    // Desired static IP address
 // IPAddress gateway(192, 168, 1, 1);         // Your network gateway
@@ -136,7 +135,7 @@ MirrorSerial Mirror(&RealSerial);
 // Each command is sent only once per day using the day-of-year value.
 // ----------------------------------------------------------------------
 
-//This class inherits the serial stream and mirrors any serial commands serial.begin serial.println to the telnet client
+
 std::map<AsyncWebSocketClient*, IPAddress> clientIPMap;
 
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len){
@@ -341,6 +340,121 @@ void checkAndControlFanByTemp() {
   }
 }
 
+template <typename T>
+void updateConfig(const char* key, T newValue){
+  //1st argument is the key and last argument is the value we want to save. This function saves to flash memory when serial command is set
+  const char* configFileName = "/config.txt";
+
+  if(!LittleFS.begin()){
+    Serial.println("ERROR: LittleFS.begin() failed. File system not mounted");
+    return;
+  }
+  if(!LittleFS.exists(configFileName)){
+    File createFile = LittleFS.open(configFileName, "w");
+    if(createFile){
+      createFile.close();
+      Serial.println("Config file could not be found. Creating new config file.");
+    } else{
+      Serial.println("ERROR: Failed to create config file :(");
+      return;
+    }
+  }
+  String configData = "";
+  File file = LittleFS.open(configFileName, "r");
+  if(file){
+    while(file.available()){
+      configData += file.readStringUntil('\n');
+      configData += "\n";
+    }
+    file.close();
+  }
+  String newConfig = "";
+  bool found = false;
+  int start = 0;
+  int newLineIndex = configData.indexOf('\n', start);
+  String keyStr = String(key) + "=";
+  while(newLineIndex != -1){
+    String line = configData.substring(start, newLineIndex);
+    if(line.startsWith(keyStr)){
+      newConfig += keyStr + String(newValue) + "\n";
+      found = true;
+    } else {
+      newConfig += line + "\n";
+    }
+    start = newLineIndex + 1;
+    newLineIndex = configData.indexOf('\n', start);
+
+  }
+  if(!found){
+    newConfig += keyStr + String(newValue) + "\n";
+  }
+  File configFile = LittleFS.open(configFileName, "w");
+  if(!configFile){
+    Serial.println("Failed to open config file for writing");
+    return;
+  }
+  configFile.print(newConfig);
+  configFile.close();
+  Serial.println("Updated config key: " + String(key) + " to " + String(newValue));
+}
+
+void loadConfig(){
+  //Load the confinguration on startup
+  const char* configFileName = "/config.txt";
+  if(!LittleFS.exists(configFileName)){
+    Serial.println("No config file was found. Using default settings");
+    return;
+  }
+  File file = LittleFS.open(configFileName, "r");
+  if(!file){
+    Serial.println("Failed to open config file for reading");
+  }
+  while (file.available()){
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if(line.length() == 0) continue;
+    int equalIndex = line.indexOf('=');
+    if(equalIndex == -1) continue;
+    String key = line.substring(0, equalIndex);
+    String value = line.substring(equalIndex + 1);
+    if(key.equalsIgnoreCase("ssid")){
+      ssid = value.c_str();
+    }
+      else if (key.equalsIgnoreCase("password")) {
+      password = value.c_str();
+    } else if (key.equalsIgnoreCase("sftempon")) {
+      FAN_ON_TEMP = value.toFloat();
+    } else if (key.equalsIgnoreCase("sftempoff")) {
+      FAN_OFF_TEMP = value.toFloat();
+    } else if (key.equalsIgnoreCase("sftimeon")) {
+      fanOnTime = value;
+    } else if (key.equalsIgnoreCase("sftimeoff")) {
+      fanOffTime = value;
+    } else if (key.equalsIgnoreCase("bgmlow")) {
+      barGraphRange[0] = value.toFloat();
+    } else if (key.equalsIgnoreCase("bgmhigh")) {
+      barGraphRange[1] = value.toFloat();
+    }
+  }
+  file.close();
+  String passStr = String(password);
+  String masked = "";
+  for(int x=0;x<passStr.length(); x++){
+    masked += "*";
+  }
+  
+  Serial.println("Configuration loaded from flash:");
+  Serial.print("  SSID: "); Serial.println(ssid);
+  Serial.print("  Password: "); Serial.println(masked);
+  Serial.print("  Fan ON Temp: "); Serial.println(FAN_ON_TEMP);
+  Serial.print("  Fan OFF Temp: "); Serial.println(FAN_OFF_TEMP);
+  Serial.print("  Fan ON Time: "); Serial.println(fanOnTime);
+  Serial.print("  Fan OFF Time: "); Serial.println(fanOffTime);
+  Serial.print("  BGM Low: "); Serial.println(barGraphRange[0]);
+  Serial.print("  BGM High: "); Serial.println(barGraphRange[1]);
+}
+
+//This function defines the serial commands 
 void handleCommands(String input) {
  // Read a line from Serial until newline
     input.trim();
@@ -387,6 +501,7 @@ void handleCommands(String input) {
         ssid = argument.c_str();
         Serial.print("WiFi SSID set to: ");
         Serial.println(ssid);
+        updateConfig("ssid", ssid);
       } else {
         Serial.println("Usage: setssid <SSID>");
       }
@@ -396,6 +511,7 @@ void handleCommands(String input) {
         password = argument.c_str();
         Serial.print("WiFi password set to: ");
         Serial.println(password);
+        updateConfig("password", password);
       } else {
         Serial.println("Usage: setpass <PASSWORD>");
       }
@@ -405,6 +521,7 @@ void handleCommands(String input) {
         barGraphRange[0] = argument.toFloat();
         Serial.print("Bar graph low mapping value: ");
         Serial.println(barGraphRange[0]);
+        updateConfig("bgmlow", barGraphRange[0]);
       } else {
         Serial.println("Usage: bmglow <Value>");
       }
@@ -414,6 +531,7 @@ void handleCommands(String input) {
         barGraphRange[1] = argument.toFloat();
         Serial.print("Bar graph high mapping value: ");
         Serial.println(barGraphRange[1]);
+        updateConfig("bgmhigh", barGraphRange[1]);
       } else {
         Serial.println("Usage: bmghigh <Value>");
       }
@@ -431,6 +549,7 @@ void handleCommands(String input) {
           FAN_ON_TEMP = tempVal;
         }
         fanIsOnTemp = false;
+        updateConfig("sftempon", FAN_ON_TEMP);
         Serial.print("Fan ON temperature threshold set to: ");
         Serial.println(FAN_ON_TEMP);
       } else {
@@ -478,6 +597,7 @@ void handleCommands(String input) {
         fanIsOnTemp = true;
         Serial.print("Fan OFF temperature threshold set to: ");
         Serial.println(FAN_OFF_TEMP);
+        updateConfig("sftempoff", FAN_OFF_TEMP);
       } else {
         Serial.println("Usage: sftempoff <temp>");
       }
@@ -533,7 +653,7 @@ void processSerialCommands() {
 
 void serialWebPage(){
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      if(!request->authenticate("admin", "*******")){
+      if(!request->authenticate("admin", "****")){
         //IPAddress clientIP = request->client()->remoteIP();
         //Serial.println("WARNING: Bad login attempt made from IP: " + clientIP.toString() + " either evil hacker or someone put in wrong credentials :P");
         return request->requestAuthentication();
@@ -573,6 +693,7 @@ void serialWebPage(){
   server.begin();
 }
 
+// Get specs of flash memory
 void getFlashSpecs(){
   size_t flashSizeBytes = ESP.getFlashChipSize();
   float flashSizeMB = flashSizeBytes / (1024.0*1024.0);
@@ -589,6 +710,14 @@ void getFlashSpecs(){
 
   size_t otaFreeBytes = otaPartitionSizeBytes - sketchSizeBytes;
   float otaFreeMB = otaFreeBytes / (1024.0 * 1024.0);
+
+  size_t LFStotalBytes = LittleFS.totalBytes();
+  size_t LFSusedBytes = LittleFS.usedBytes();
+  float LFStotalMB = LFStotalBytes / (1024.0 * 1024.0);
+  float LSFusedMB = LFSusedBytes / (1024.0 * 1024.0);
+
+  Serial.println("LittleFS total MB: " + String(LFStotalMB));
+  Serial.println("LittleFS used MB: " + String(LSFusedMB));
 
   Serial.print("OTA Partition Size: ");
   Serial.print(otaPartitionSizeMB, 2);
@@ -607,6 +736,13 @@ void getFlashSpecs(){
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  if(!LittleFS.begin()){
+    Serial.println("Failed to moutn littleFS");
+  } else{
+    Serial.println("LittleFS mounted successfully now loading settings");
+    loadConfig();
+  }
 
   // if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
   //   Serial.println("STA Failed to configure");
@@ -673,7 +809,7 @@ void setup() {
   initWebSocket();
   serialWebPage();
   getFlashSpecs();
-  Serial.println("Fan controller firmware version 1.5 5:38PM 4/2/25");
+  Serial.println("Fan controller firmware version 2.0.3");
   Serial.println("Type 'help' or '?' for a list of commands.");
 }
 
@@ -704,7 +840,7 @@ void loop() {
   // float temperature = sensors.getTempCByIndex(0);
   float averageTempC = getAveragedTemperature();
   
-  // Check if the sensor is not connected properly.
+  // If temperature sensor got disconnected run the led bargraph animation 
   if (averageTempC == DEVICE_DISCONNECTED_C) {
     static bool flag = false;
     // Sensor error: Run the LED animation (bargraph lights one LED at a time from left to right)

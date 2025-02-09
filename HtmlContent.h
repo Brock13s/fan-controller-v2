@@ -74,7 +74,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     
     <script>
       // Open a WebSocket connection to the ESP32.
-      var socket = new WebSocket('ws://' + window.location.host + '/ws');
+      var wsProtocol = (window.location.protocol === "https:") ? "wss://" : "ws://";
+      var socket = new WebSocket(wsProtocol + window.location.host + '/ws');
       var logElement = document.getElementById('log');
       var cmdInput = document.getElementById('cmd');
       
@@ -82,6 +83,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       socket.onmessage = function(event) {
         logElement.value += event.data;
         logElement.scrollTop = logElement.scrollHeight;
+        console.log("Recieved " + event.data);
+      };
+
+      socket.onopen = function(event){
+        console.log("WebSocket connection established");
       };
 
       // Log any WebSocket errors to the console.
