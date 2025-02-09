@@ -12,8 +12,8 @@
 #include "HtmlContent.h"
 
 // ------------------------- WiFi & NTP Configuration -------------------------
-const char* ssid = "BrockNet";
-const char* password = "*****";
+String ssid = "BrockNet";
+String password = "*****";
 
 uint16_t utcOffsetInSeconds = 36000; 
 uint32_t ntpUpdateMs = 43200000; //Every 12 hours
@@ -418,10 +418,10 @@ void loadConfig(){
     String key = line.substring(0, equalIndex);
     String value = line.substring(equalIndex + 1);
     if(key.equalsIgnoreCase("ssid")){
-      ssid = value.c_str();
+      ssid = value;
     }
       else if (key.equalsIgnoreCase("password")) {
-      password = value.c_str();
+      password = value;
     } else if (key.equalsIgnoreCase("sftempon")) {
       FAN_ON_TEMP = value.toFloat();
     } else if (key.equalsIgnoreCase("sftempoff")) {
@@ -608,6 +608,7 @@ void handleCommands(String input) {
         fanIsOnTime = false;
         Serial.print("Fan ON time set to: ");
         Serial.println(fanOnTime);
+        updateConfig("sftimeon", fanOnTime);
       } else {
         Serial.println("Usage: sftimeon <HH:MM:SS>");
       }
@@ -618,6 +619,7 @@ void handleCommands(String input) {
         fanOffTime = argument;
         Serial.print("Fan OFF time set to: ");
         Serial.println(fanOffTime);
+        updateConfig("sftimeoff", fanOffTime);
       } else {
         Serial.println("Usage: sftimeoff <HH:MM:SS>");
       }
@@ -762,15 +764,13 @@ void setup() {
   digitalWrite(NTP_STATUS_LIGHT, HIGH);  // Start assuming no connectivity
   digitalWrite(TRANSMIT_STATUS, LOW);  // Start assuming no connectivity
   
-  
   // Connect to WiFi
   Serial.printf("Connecting to WiFi network: %s\n", ssid);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nConnected to WiFi!");
+  if(WiFi.status() == WL_CONNECTED){
+    Serial.println("Connected to Wifi with ip: " + WiFi.localIP());
+  } 
+  
   
   // Initialize the NTP client and update time
   timeClient.begin();
@@ -809,7 +809,7 @@ void setup() {
   initWebSocket();
   serialWebPage();
   getFlashSpecs();
-  Serial.println("Fan controller firmware version 2.0.3");
+  Serial.println("Fan controller firmware version 2.0.4");
   Serial.println("Type 'help' or '?' for a list of commands.");
 }
 
