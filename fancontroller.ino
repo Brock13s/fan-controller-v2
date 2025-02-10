@@ -35,6 +35,9 @@ NTPClient timeClient(ntpUDP, "au.pool.ntp.org", utcOffsetInSeconds, ntpUpdateMs)
 #define CHANGE_LIGHT_COLOR "000001110110"
 #define FANLIGHT_ON_OFF "000001111110"
 
+#define GREEN 0x0
+#define RED 0x1
+
 // ------------------------- RF Transmitter Configuration -------------------------
 #define SHIFT_DATA_PIN 25   // DS of the shift register
 #define SHIFT_CLOCK_PIN 19  // Clock of the shift register
@@ -82,10 +85,37 @@ AsyncWebServer server(80); //Define websocket and webpage
 AsyncWebSocket ws("/ws");
 
 //This class mirrors whatever we serial.print or whatever to the web serial console
+String epochTimeToDateTime(unsigned long epoch){
+  unsigned long JDN = epoch / 86400UL+2440588UL;
+  // This converts the epoch time to an integer Julian Day Number.
+
+  // Use the Fliegel-Van Flandern algorithm to convert JDN to Gregorian date.
+  long L = JDN + 68569;
+  long N = (4*L)/146097;
+  L = L - (146097 * N + 3)/4;
+  long I = (4000 *(L+1)) / 1461001;
+  L = L - (1461*I)/4+31;
+  long J = (80 * L) / 2447;
+  int day = L - (2447 * J) / 80;
+  L = J / 11;
+  int month = J + 2 - 12 * L;
+  int year = 100 * (N - 49) + I + L;
+
+  unsigned long secondsInDay = epoch % 86400UL;
+  int hour = secondsInDay / 3600;
+  int minute = (secondsInDay % 3600) / 60;
+  int second = secondsInDay % 60;
+
+  char buf[30];
+  sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second);
+  return String(buf);
+}
+
 class MirrorSerial : public Stream{
   public:
     HardwareSerial* _serial;
-    MirrorSerial(HardwareSerial* serial) : _serial(serial){}
+    bool atLineStart;
+    MirrorSerial(HardwareSerial* serial) : _serial(serial), atLineStart(true){}
     void begin(unsigned long baud, uint32_t config = SERIAL_8N1, int8_t rxPin = -1, int8_t txPin =-1, bool invert = false){
       _serial->begin(baud,config,rxPin,txPin,invert);
     }
@@ -106,20 +136,38 @@ class MirrorSerial : public Stream{
       _serial->flush();
     }
 
+    String getTimestamp(){
+      unsigned long epochTime = timeClient.getEpochTime();
+      return epochTimeToDateTime(epochTime) + " ";
+    }
+
     virtual size_t write(uint8_t c) override {
+      size_t n = 0;
+      if(atLineStart){
+        String ts = getTimestamp();
+        n += _serial->write((const uint8_t*)ts.c_str(), ts.length());
+        serialLog += ts;
+        wsBuffer += ts;
+        atLineStart = false;
+      }
+      n += _serial->write(c);
       serialLog += (char)c;
       wsBuffer += (char) c;
-      return _serial->write(c);
+      if(c == '\n') atLineStart = true;
+      return n;
     }
 
     virtual size_t write(const uint8_t *buffer, size_t size) override {
+      size_t total = 0;
       for(size_t i = 0; i < size; i++){
-        char ch = (char)buffer[i];
-        serialLog += ch;
-        wsBuffer += ch;
+        // char ch = (char)buffer[i];
+        // serialLog += ch;
+        // wsBuffer += ch;
+        total += write(buffer[i]);
 
       }
-      return _serial->write(buffer, size);
+      // return _serial->write(buffer, size);
+      return total;
     }
 };
 
@@ -444,14 +492,14 @@ void loadConfig(){
   }
   
   Serial.println("Configuration loaded from flash:");
-  Serial.print("  SSID: "); Serial.println(ssid);
-  Serial.print("  Password: "); Serial.println(masked);
-  Serial.print("  Fan ON Temp: "); Serial.println(FAN_ON_TEMP);
-  Serial.print("  Fan OFF Temp: "); Serial.println(FAN_OFF_TEMP);
-  Serial.print("  Fan ON Time: "); Serial.println(fanOnTime);
-  Serial.print("  Fan OFF Time: "); Serial.println(fanOffTime);
-  Serial.print("  BGM Low: "); Serial.println(barGraphRange[0]);
-  Serial.print("  BGM High: "); Serial.println(barGraphRange[1]);
+  Serial.println("  SSID: " + ssid); 
+  Serial.println("  Password: " + masked); 
+  Serial.println("  Fan ON Temp: " + String(FAN_ON_TEMP)); 
+  Serial.println("  Fan OFF Temp: " + String(FAN_OFF_TEMP)); 
+  Serial.println("  Fan ON Time: " + fanOnTime); 
+  Serial.println("  Fan OFF Time: " + fanOffTime); 
+  Serial.println("  BGM Low: " + String(barGraphRange[0])); 
+  Serial.println("  BGM High: " + String(barGraphRange[1])); 
 }
 
 //This function defines the serial commands 
@@ -488,6 +536,7 @@ void handleCommands(String input) {
       Serial.println("  sftimeon <HH:MM:SS>    - Set fan ON time");
       Serial.println("  sftimeoff <HH:MM:SS>   - Set fan OFF time");
       Serial.println("  getTime                - Get current NTP time");
+      Serial.println("  getuptime              - Uptime since esp32 started");
       Serial.println("  getTemp                - Get current temperature from sensor");
       Serial.println("  manualfan <FAN_OFF|FAN_MED|FAN_HIGH|FAN_LOW> - Manually transmit code");
       
@@ -525,6 +574,26 @@ void handleCommands(String input) {
       } else {
         Serial.println("Usage: bmglow <Value>");
       }
+    }
+    else if(command.equalsIgnoreCase("getuptime")){
+      unsigned long uptimeSeconds = millis() / 1000;
+      int days = uptimeSeconds / 86400;
+      uptimeSeconds %=86400;
+      int hours = uptimeSeconds / 3600;
+      uptimeSeconds %=3600;
+      int minutes = uptimeSeconds / 60;
+      int seconds = uptimeSeconds % 60;
+      Serial.print("Uptime: ");
+      if(days > 0){
+        Serial.print(days);
+        Serial.print(" days, ");
+      }
+      Serial.print(hours);
+      Serial.print(" hours, ");
+      Serial.print(minutes);
+      Serial.print(" minutes, ");
+      Serial.print(seconds);
+      Serial.println(" seconds");
     }
     else if (command.equalsIgnoreCase("bgmhigh")) {
       if (argument.length() > 0) {
@@ -735,6 +804,8 @@ void getFlashSpecs(){
   Serial.println("");
 }
 
+
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -761,7 +832,7 @@ void setup() {
 
   pinMode(LED_BARGRAPH_LED_10, OUTPUT);
   pinMode(LED_BARGRAPH_LED_9, OUTPUT);
-  digitalWrite(NTP_STATUS_LIGHT, HIGH);  // Start assuming no connectivity
+  digitalWrite(NTP_STATUS_LIGHT, RED);  // Start assuming no connectivity
   digitalWrite(TRANSMIT_STATUS, LOW);  // Start assuming no connectivity
   
   // Connect to WiFi
@@ -782,14 +853,14 @@ void setup() {
     // Update time from the NTP server and check its validity.
     timeClient.update();
     if (timeClient.getEpochTime() > 100000) {
-      digitalWrite(NTP_STATUS_LIGHT, LOW);
+      digitalWrite(NTP_STATUS_LIGHT, GREEN);
       Serial.println("NTP time: " + timeClient.getFormattedTime());
     } else {
-      digitalWrite(NTP_STATUS_LIGHT, HIGH);
+      digitalWrite(NTP_STATUS_LIGHT, RED);
       Serial.println("Failed to retrieve a valid NTP time.");
     }
   } else {
-    digitalWrite(NTP_STATUS_LIGHT, HIGH);
+    digitalWrite(NTP_STATUS_LIGHT, RED);
     Serial.println("au.pool.ntp.org is not reachable.");
   }
   
@@ -821,9 +892,9 @@ void loop() {
     lastNtpCheckMillis = currentMillis;
     IPAddress ntpServerIP;
     if (WiFi.hostByName("au.pool.ntp.org", ntpServerIP)) {
-    digitalWrite(NTP_STATUS_LIGHT, LOW);
+    digitalWrite(NTP_STATUS_LIGHT, GREEN);
     Serial.println("Successful connection to au.pool.ntp.org");
-    Serial.println("NTP time: " + timeClient.getFormattedTime());
+    //Serial.println("NTP time: " + timeClient.getFormattedTime());
     // timeClient.update();
     // if (timeClient.getEpochTime() > 100000) {
     //   digitalWrite(NTP_STATUS_LIGHT, LOW);  // Valid NTP time received
@@ -831,7 +902,7 @@ void loop() {
     //   digitalWrite(NTP_STATUS_LIGHT, HIGH);
     // }
   } else {
-    digitalWrite(NTP_STATUS_LIGHT, HIGH);     // Unable to resolve pool.ntp.org
+    digitalWrite(NTP_STATUS_LIGHT, RED);     // Unable to resolve pool.ntp.org
     Serial.println("ERROR: cant connect to au.pool.ntp.org");
   }
   }
