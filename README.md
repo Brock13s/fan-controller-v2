@@ -6,7 +6,7 @@ Additionally, the system includes two status LEDs (red and green) to indicate th
 Key Features
 Temperature Sensing: Uses a Dallas DS18B20 temperature sensor to measure ambient temperature.
 LED Bargraph Visualization: Displays the temperature range from 15°C to 30°C using a bargraph controlled by a 74HC595 shift register.
-RF Transmission: Sends the temperature data wirelessly via an FS1000A 433MHz RF transmitter and either with temperature or ntp time
+RF Transmission: Sends the temperature data wirelessly via an FS1000A 433MHz RF transmitter and therefore control ceiling fan with either temperature or ntp time. 
 NTP Synchronization: Sync with a time server pool every 12 hours without using a rtc module
 Green LED: Indicates successful NTP connection and time retrieval.
 Red LED: Indicates failure to connect to the NTP server.
