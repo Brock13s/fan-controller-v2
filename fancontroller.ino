@@ -198,7 +198,12 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
     for(size_t i=0;i<len;i++){
       cmd += (char)data[i];
     }
-    handleCommands(cmd);
+    if(cmd.equals("ping")){
+      client->text("pong");
+    } else {
+      handleCommands(cmd);
+    }
+    
   }
   else if(type==WS_EVT_DISCONNECT){
     if(clientIPMap.find(client) != clientIPMap.end()){
@@ -536,7 +541,8 @@ void handleCommands(String input) {
       Serial.println("  sftimeon <HH:MM:SS>    - Set fan ON time");
       Serial.println("  sftimeoff <HH:MM:SS>   - Set fan OFF time");
       Serial.println("  getTime                - Get current NTP time");
-      Serial.println("  getuptime              - Uptime since esp32 started");
+      Serial.println("  getUptime              - Uptime since esp32 started");
+      Serial.println("  restartEsp             - Restarts the esp32");
       Serial.println("  getTemp                - Get current temperature from sensor");
       Serial.println("  manualfan <FAN_OFF|FAN_MED|FAN_HIGH|FAN_LOW> - Manually transmit code");
       
@@ -604,6 +610,12 @@ void handleCommands(String input) {
       } else {
         Serial.println("Usage: bmghigh <Value>");
       }
+    }
+
+    else if(command.equalsIgnoreCase("restartesp")){
+      Serial.println("Restarting esp32...");
+      delay(500);
+      ESP.restart();
     }
     else if (command.equalsIgnoreCase("sftempon")) {
       if (argument.length() > 0) {
@@ -699,11 +711,8 @@ void handleCommands(String input) {
       Serial.println(ntpTime);
     }
     else if (command.equalsIgnoreCase("getTemp")) {
-      float avgTemp = getAveragedTemperature();
-      if(!avgTemp != DEVICE_DISCONNECTED_C){
-        Serial.print(getAveragedTemperature());
-        Serial.println("C");
-      }
+      Serial.print(getAveragedTemperature());
+      Serial.println("C");
       
     }
     else {
@@ -880,7 +889,7 @@ void setup() {
   initWebSocket();
   serialWebPage();
   getFlashSpecs();
-  Serial.println("Fan controller firmware version 2.0.4");
+  Serial.println("Fan controller firmware version 2.0.6");
   Serial.println("Type 'help' or '?' for a list of commands.");
 }
 
