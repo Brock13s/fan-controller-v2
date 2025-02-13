@@ -68,6 +68,7 @@ String fanOffTime = "07:00:00"; // Fan turns OFF at 07:00:00
 // ------------------------- Fan Control Settings -------------------------
 bool fanIsOnTemp = false; //Flags to stop repeatedly transmitting if temp is in range or time
 bool fanIsOnTime = false;
+bool automaticFanControl = true;
 
 // Global variables to track fan state and time-based command execution
 float FAN_ON_TEMP = 30.0;
@@ -534,17 +535,18 @@ void handleCommands(String input) {
       Serial.println("  setssid <SSID>         - Set WiFi SSID");
       Serial.println("  help or ?              - Shows this menu");
       Serial.println("  setpass <PASSWORD>     - Set WiFi password");
-      Serial.println("  sftempon <temp>        - Set fan ON temperature threshold");
-      Serial.println("  sftempoff <temp>       - Set fan OFF temperature threshold");
-      Serial.println("  bgmlow <value>         - Set bargraph low mapping temperature");
-      Serial.println("  bgmhigh <value>        - Set bargraph high mapping temperature");
-      Serial.println("  sftimeon <HH:MM:SS>    - Set fan ON time");
-      Serial.println("  sftimeoff <HH:MM:SS>   - Set fan OFF time");
+      Serial.println("  fantempon <temp> <delta>       - Set fan ON temperature threshold and fan off using delta");
+      //Serial.println("  sftempoff <temp>       - Set fan OFF temperature threshold");
+      Serial.println("  bgmlow <value>         - Set led bargraph low mapping temperature");
+      Serial.println("  bgmhigh <value>        - Set led bargraph high mapping temperature");
+      Serial.println("  fantimeon <HH:MM:SS>    - Set fan ON time");
+      Serial.println("  fantimeoff <HH:MM:SS>   - Set fan OFF time");
       Serial.println("  getTime                - Get current NTP time");
       Serial.println("  getUptime              - Uptime since esp32 started");
       Serial.println("  restartEsp             - Restarts the esp32");
       Serial.println("  getTemp                - Get current temperature from sensor");
       Serial.println("  manualfan <FAN_OFF|FAN_MED|FAN_HIGH|FAN_LOW> - Manually transmit code");
+      Serial.println("  automaticfan <on|true|enable|off|false|disable> - Enable or disable fan control by temperature and time");
       
     }
     if(command.equalsIgnoreCase("clearlog")){
@@ -617,24 +619,43 @@ void handleCommands(String input) {
       delay(500);
       ESP.restart();
     }
-    else if (command.equalsIgnoreCase("sftempon")) {
+    else if (command.equalsIgnoreCase("fanontemp")) {
       if (argument.length() > 0) {
-        float tempVal = argument.toFloat();
-        if(tempVal < 0){
-          Serial.println("ERROR: Value was set too low, defaulting to 0c. Why the fuck is it set lower anyway?");
-          FAN_ON_TEMP = 0;
-        } else if(tempVal > 40){
-          Serial.println("ERROR: Value was set too high, defaulting to 40c. Why the fuck is it set higher anyway?");
-          FAN_ON_TEMP = 40;
-        } else{
-          FAN_ON_TEMP = tempVal;
-        }
-        fanIsOnTemp = false;
-        updateConfig("sftempon", FAN_ON_TEMP);
-        Serial.print("Fan ON temperature threshold set to: ");
-        Serial.println(FAN_ON_TEMP);
+        int spaceIndex2 = argument.indexOf(' ');
+        if(spaceIndex2 == -1){
+          Serial.println("Usage: fanontemp <value> <delta>");
+        } else {
+          String valueStr = argument.substring(0, spaceIndex2);
+          String deltaStr = argument.substring(spaceIndex2 + 1);
+          valueStr.trim();
+          deltaStr.trim();
+          if(valueStr.length() == 0 || deltaStr.length() == 0){
+            Serial.println("Usage: fantempon <value> <delta>");
+          } else {
+            float onTemp = valueStr.toFloat();
+            float delta = deltaStr.toFloat();
+
+          if(onTemp < 0){
+            Serial.println("ERROR: Value was set too low, defaulting to 0c. Why the fuck is it set lower anyway?");
+            onTemp = 0;
+          } else if(onTemp > 40){
+            Serial.println("ERROR: Value was set too high, defaulting to 40c. Why the fuck is it set higher anyway?");
+            onTemp = 40;
+          } 
+          FAN_ON_TEMP = onTemp;
+          FAN_OFF_TEMP = onTemp - delta;
+          if(FAN_OFF_TEMP < 0) FAN_OFF_TEMP = 0;
+          fanIsOnTemp = false;
+          updateConfig("sftempon", FAN_ON_TEMP);
+          updateConfig("sftempoff", FAN_OFF_TEMP);
+          Serial.print("Fan ON temperature threshold set to: ");
+          Serial.println(FAN_ON_TEMP);
+          Serial.print("Fan Off temperature threshold set to: ");
+          Serial.println(FAN_OFF_TEMP);
+          }
+        }  
       } else {
-        Serial.println("Usage: sftempon <temp>");
+        Serial.println("Usage: fanontemp <temp> <delta>");
       }
     }
     else if (command.equalsIgnoreCase("manualfan")) {
@@ -663,27 +684,27 @@ void handleCommands(String input) {
         Serial.println("Usage: manualfan <FAN_OFF|FAN_MED|FAN_HIGH|FAN_LOW>");
       }
     }
-    else if (command.equalsIgnoreCase("sftempoff")) {
-      if (argument.length() > 0) {
-        float tempVal = argument.toFloat();
-        if(tempVal < 0){
-          Serial.println("ERROR: Value was set too low, defaulting to 0c. Why the fuck is it set lower anyway?");
-          FAN_ON_TEMP = 0;
-        } else if(tempVal > 40){
-          Serial.println("ERROR: Value was set too high, defaulting to 40c. Why the fuck is it set higher anyway?");
-          FAN_ON_TEMP = 40;
-        } else{
-          FAN_ON_TEMP = tempVal;
-        }
-        fanIsOnTemp = true;
-        Serial.print("Fan OFF temperature threshold set to: ");
-        Serial.println(FAN_OFF_TEMP);
-        updateConfig("sftempoff", FAN_OFF_TEMP);
-      } else {
-        Serial.println("Usage: sftempoff <temp>");
-      }
-    }
-    else if (command.equalsIgnoreCase("sftimeon")) {
+    // else if (command.equalsIgnoreCase("sftempoff")) {
+    //   if (argument.length() > 0) {
+        
+    //     if(tempVal < 0){
+    //       Serial.println("ERROR: Value was set too low, defaulting to 0c. Why the fuck is it set lower anyway?");
+    //       FAN_ON_TEMP = 0;
+    //     } else if(tempVal > 40){
+    //       Serial.println("ERROR: Value was set too high, defaulting to 40c. Why the fuck is it set higher anyway?");
+    //       FAN_ON_TEMP = 40;
+    //     } else{
+    //       FAN_ON_TEMP = tempVal;
+    //     }
+    //     fanIsOnTemp = true;
+    //     Serial.print("Fan OFF temperature threshold set to: ");
+    //     Serial.println(FAN_OFF_TEMP);
+    //     updateConfig("sftempoff", FAN_OFF_TEMP);
+    //   } else {
+    //     Serial.println("Usage: sftempoff <temp>");
+    //   }
+    // }
+    else if (command.equalsIgnoreCase("fantimeon")) {
       if (argument.length() > 0) {
         fanOnTime = argument;
         fanIsOnTime = false;
@@ -691,10 +712,27 @@ void handleCommands(String input) {
         Serial.println(fanOnTime);
         updateConfig("sftimeon", fanOnTime);
       } else {
-        Serial.println("Usage: sftimeon <HH:MM:SS>");
+        Serial.println("Usage: fantimeon <HH:MM:SS>");
       }
     }
-    else if (command.equalsIgnoreCase("sftimeoff")) {
+    else if (command.equalsIgnoreCase("automaticfan")){
+      if(argument.length() > 0){
+        String argLower = argument;
+        argLower.toLowerCase();
+        if(argLower.equals("on") || argLower.equals("true") || argLower.equals("enable")){
+          automaticFanControl = true;
+          Serial.println("Automatic fan control enabled.");
+        } else if(argLower.equals("off") || argLower.equals("false") || argLower.equals("disable")){
+          automaticFanControl = false;
+          Serial.println("Automatic fan control disabled.");
+        } else {
+          Serial.println("Usage: automaticfan <on|true|enable|off|false|disable>");
+        }
+      } else {
+        Serial.println("Usage: automaticfan <on|true|enable|off|false|disable>");
+      }
+    }
+    else if (command.equalsIgnoreCase("fantimeoff")) {
       if (argument.length() > 0) {
         fanIsOnTime = true;
         fanOffTime = argument;
@@ -702,7 +740,7 @@ void handleCommands(String input) {
         Serial.println(fanOffTime);
         updateConfig("sftimeoff", fanOffTime);
       } else {
-        Serial.println("Usage: sftimeoff <HH:MM:SS>");
+        Serial.println("Usage: fantimeoff <HH:MM:SS>");
       }
     }
     else if (command.equalsIgnoreCase("getTime")) {
@@ -733,7 +771,7 @@ void processSerialCommands() {
 
 void serialWebPage(){
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      if(!request->authenticate("admin", "****")){
+      if(!request->authenticate("admin", "*")){
         //IPAddress clientIP = request->client()->remoteIP();
         //Serial.println("WARNING: Bad login attempt made from IP: " + clientIP.toString() + " either evil hacker or someone put in wrong credentials :P");
         return request->requestAuthentication();
@@ -889,7 +927,7 @@ void setup() {
   initWebSocket();
   serialWebPage();
   getFlashSpecs();
-  Serial.println("Fan controller firmware version 2.0.6");
+  Serial.println("Fan controller firmware version 2.0.7");
   Serial.println("Type 'help' or '?' for a list of commands.");
 }
 
@@ -951,12 +989,13 @@ void loop() {
   else {
     // Sensor is connected: Update the bargraph based on the actual temperature.
     updateBarGraphFromTemperature(averageTempC,barGraphRange[0],barGraphRange[1]);
-    checkAndControlFanByTemp();
+    if(automaticFanControl) checkAndControlFanByTemp();
+    
   }
   
   
   // Execute the scheduled (time-based) fan control
-  checkAndControlFanByTime();
+  if(automaticFanControl) checkAndControlFanByTime();
   processSerialCommands();
   if(wsBuffer.length() >0){
     ws.textAll(wsBuffer);

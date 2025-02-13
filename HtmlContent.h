@@ -25,6 +25,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         text-align: center;
         border-radius: 4px;
+        border: 5px solid transparent;
       }
       h2 { margin-top: 0; color: #ffffff;}
       textarea {
@@ -98,6 +99,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 clearTimeout(pongTimeoutTimer);
                 pongTimeoutTimer = null;
             }
+            var container = document.querySelector(".container");
+            if(container){
+              container.style.border = '5px solid transparent';
+            }
         } else {
         logElement.value += event.data;
         logElement.scrollTop = logElement.scrollHeight;
@@ -131,8 +136,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 console.log("Sending ping to server...");
                 socket.send("ping");
                 pongTimeoutTimer = setTimeout(function(){
-                    alert("Server is down (pong was not received)!");
-                    window.location.reload();
+                    var container = document.querySelector(".container");
+                    if(container){
+                      container.style.border = "5px solid red";
+                    }
+                    setTimeout(function(){
+                    if(confirm("Server is down (pong was not received)! Would you like to reload?")){
+                      window.location.reload();
+                    } else {
+                      console.log("User choose not to reconnect.");
+                    }
+                    }, 50);
+                    
+                    
                 }, pongTimeout);
             }
         }, pingInterval);
